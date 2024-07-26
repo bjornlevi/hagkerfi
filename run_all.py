@@ -1,87 +1,56 @@
 import subprocess
+
+# Run the scripts sequentially
+def run_script(script_name):
+    try:
+        result = subprocess.run(['python', script_name], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        print(f"{script_name} executed successfully.")
+        print(result.stdout)
+    except subprocess.CalledProcessError as e:
+        print(f"Error executing {script_name}.")
+        print(e.stderr)
+
+scripts = [
+    "wage_distribution.py",
+    "population_distribution.py",
+    "income_by_gender_and_age.py",
+    "cost_of_living.py",
+    "generate_population.py"
+]
+
+for script in scripts:
+    run_script(script)
+
+# Example queries to verify the data in the database
 import sqlite3
 import pandas as pd
 
-# List of script files to run
-scripts = [
-    'wage_distribution.py',
-    'population_distribution.py',
-    'income_by_gender_and_age.py',
-    'cost_of_living.py'
-]
-
-# Run each script
-for script in scripts:
-    try:
-        result = subprocess.run(['python', script], check=True, capture_output=True, text=True)
-        print(f"Script {script} ran successfully.\n")
-        print(f"Output:\n{result.stdout}\n")
-    except subprocess.CalledProcessError as e:
-        print(f"Error running script {script}.\n")
-        print(f"Error message:\n{e.stderr}\n")
-
-# Connect to the SQLite database
 conn = sqlite3.connect('income_data.db')
 
-# Example query functions
+# Query wage distribution
+wage_distribution_df = pd.read_sql_query("SELECT * FROM wage_distribution", conn)
+print("Wage Distribution:")
+print(wage_distribution_df.head())
 
-def query_wage_distribution(wage_range=None):
-    query = 'SELECT * FROM wage_distribution WHERE 1=1'
-    params = []
-    if wage_range is not None:
-        query += ' AND wage_range = ?'
-        params.append(wage_range)
-    df = pd.read_sql_query(query, conn, params=params)
-    return df
+# Query population distribution
+population_distribution_df = pd.read_sql_query("SELECT * FROM population_distribution", conn)
+print("Population Distribution:")
+print(population_distribution_df.head())
 
-def query_population_distribution(age=None):
-    query = 'SELECT * FROM population_distribution WHERE 1=1'
-    params = []
-    if age is not None:
-        query += ' AND age = ?'
-        params.append(age)
-    df = pd.read_sql_query(query, conn, params=params)
-    df['population'] = df['population'].astype(int)  # Ensure population is int
-    return df
+# Query income by gender and age
+income_by_gender_and_age_df = pd.read_sql_query("SELECT * FROM income_by_gender_and_age", conn)
+print("Income by Gender and Age:")
+print(income_by_gender_and_age_df.head())
 
-def query_income_by_gender_and_age(age=None, gender=None):
-    query = 'SELECT * FROM income_by_gender_and_age WHERE 1=1'
-    params = []
-    if age is not None:
-        query += ' AND age = ?'
-        params.append(age)
-    if gender is not None:
-        query += ' AND gender = ?'
-        params.append(gender)
-    df = pd.read_sql_query(query, conn, params=params)
-    return df
+# Query cost of living
+cost_of_living_df = pd.read_sql_query("SELECT * FROM cost_of_living", conn)
+print("Cost of Living:")
+print(cost_of_living_df.head())
 
-def query_cost_of_living_data(category=None):
-    query = 'SELECT * FROM cost_of_living WHERE 1=1'
-    params = []
-    if category is not None:
-        query += ' AND category = ?'
-        params.append(category)
-    df = pd.read_sql_query(query, conn, params=params)
-    return df
+# Query generated population
+generated_population_df = pd.read_sql_query("SELECT * FROM population", conn)
+print("Generated Population:")
+print(generated_population_df.head())
 
-# Example queries
-print("Query result for wage range '1000000-1050000':")
-result = query_wage_distribution(wage_range='1000000-1050000')
-print(result)
-
-print("Query result for age 17:")
-result = query_population_distribution(age=17)
-print(result)
-
-print("Query result for age 17 and gender 'Karlar':")
-result = query_income_by_gender_and_age(age=17, gender='Karlar')
-print(result)
-
-print("Query result for cost of living category 'HousingUtilities':")
-result = query_cost_of_living_data(category='HousingUtilities')
-result['cost'] = result['cost'].apply(lambda x: f"{x:,.2f}")
-print(result)
-
-# Close connection
+# Close the connection
 conn.close()

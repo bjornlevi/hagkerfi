@@ -5,12 +5,6 @@ import sqlite3
 wage_distribution_file_path = 'data/wage_distribution.csv'
 wage_distribution = pd.read_csv(wage_distribution_file_path, encoding='UTF-8')
 
-# Convert byte-like objects to strings and then to integers for population_distribution
-def convert_to_int(value):
-    if isinstance(value, bytes):
-        return int(value.decode('utf-8').strip())
-    return int(value)
-
 # Adjust the 'Laun' column in wage_distribution to remove dots and multiply by 1000
 def adjust_wage_ranges(wage_range):
     parts = wage_range.replace('.', '').split('-')
@@ -25,16 +19,25 @@ wage_distribution['Laun'] = wage_distribution['Laun'].apply(adjust_wage_ranges)
 for column in wage_distribution.columns[1:]:
     wage_distribution[column] = wage_distribution[column].str.replace(',', '.').astype(float) / 100
 
-# Rename columns to be database and code safe
-wage_distribution = wage_distribution.rename(columns={
-    'Iðnaðarfólk': 'Industrials',
-    'Sérfræðingar': 'Professionals',
-    'Skrifstofufólk': 'OfficeStaff',
-    'Stjórnendur': 'Managers',
-    'Tæknar': 'Technicians',
-    'Verkafólk': 'Laborers',
+# Rename columns to be database-safe
+wage_distribution.rename(columns={
+    'Iðnaðarfólk': 'IndustrialWorkers', 
+    'Sérfræðingar': 'Professionals', 
+    'Skrifstofufólk': 'OfficeStaff', 
+    'Stjórnendur': 'Managers', 
+    'Tæknar': 'Technicians', 
+    'Verkafólk': 'Laborers', 
     'Þjónusta og umönnun': 'ServiceCare'
-})
+}, inplace=True)
+
+# Split wage_range into min_income and max_income
+def split_wage_range(row):
+    parts = row['Laun'].split('-')
+    row['min_income'] = int(parts[0])
+    row['max_income'] = int(parts[1]) if parts[1] != 'inf' else float('inf')
+    return row
+
+wage_distribution = wage_distribution.apply(split_wage_range, axis=1)
 
 # Create SQLite database and table
 conn = sqlite3.connect('income_data.db')
@@ -44,11 +47,19 @@ c = conn.cursor()
 c.execute('DROP TABLE IF EXISTS wage_distribution')
 
 # Create the wage_distribution table with columns for each occupation and the total percentage
-columns = ', '.join([f"{col.replace(' ', '_').replace('ö', 'o').replace('Þ', 'Th')}" for col in wage_distribution.columns[1:]])
-create_wage_table_query = f'''
+create_wage_table_query = '''
     CREATE TABLE wage_distribution (
         wage_range TEXT,
-        {columns} REAL
+        min_income INTEGER,
+        max_income INTEGER,
+        IndustrialWorkers REAL,
+        Professionals REAL,
+        OfficeStaff REAL,
+        Managers REAL,
+        Technicians REAL,
+        Laborers REAL,
+        ServiceCare REAL,
+        Alls REAL
     )
 '''
 
@@ -57,10 +68,10 @@ c.execute(create_wage_table_query)
 # Insert the cleaned wage distribution data into the table using parameterized queries
 for _, row in wage_distribution.iterrows():
     wage_range = row['Laun']
-    values = [wage_range] + [row[col] for col in wage_distribution.columns[1:]]
+    values = [wage_range, row['min_income'], row['max_income']] + [row[col] for col in ['IndustrialWorkers', 'Professionals', 'OfficeStaff', 'Managers', 'Technicians', 'Laborers', 'ServiceCare', 'Alls']]
     placeholders = ', '.join(['?'] * len(values))
     insert_wage_query = f'''
-        INSERT INTO wage_distribution (wage_range, {', '.join(wage_distribution.columns[1:].str.replace(' ', '_').str.replace('ö', 'o').str.replace('Þ', 'Th'))})
+        INSERT INTO wage_distribution (wage_range, min_income, max_income, IndustrialWorkers, Professionals, OfficeStaff, Managers, Technicians, Laborers, ServiceCare, Alls)
         VALUES ({placeholders})
     '''
     c.execute(insert_wage_query, values)
@@ -69,24 +80,4 @@ for _, row in wage_distribution.iterrows():
 conn.commit()
 conn.close()
 
-print("Wage distribution data has been cleaned and inserted into the database.")
-
-# Function to query data from the database
-def query_wage_distribution(wage_range=None):
-    conn = sqlite3.connect('income_data.db')
-    query = 'SELECT * FROM wage_distribution WHERE 1=1'
-    params = []
-    if wage_range is not None:
-        query += ' AND wage_range = ?'
-        params.append(wage_range)
-    df = pd.read_sql_query(query, conn, params=params)
-    conn.close()
-    return df
-
-# Example query
-print("Query result for wage range '1000000-1050000':")
-result = query_wage_distribution(wage_range='1000000-1050000')
-print(result)
-
-# Close connection
-conn.close()
+print("Wage distribution data has been inserted into the database.")

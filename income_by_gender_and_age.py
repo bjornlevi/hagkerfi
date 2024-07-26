@@ -15,7 +15,7 @@ def unpack_age_groups(row):
     income = row['2022']
     income_type = row['Tekjur og skattar']
     unpacked_rows = []
-    
+
     if 'ára' in age_group:
         ages = age_group.replace(' ára', '').split(' - ')
         if len(ages) == 2:
@@ -25,7 +25,7 @@ def unpack_age_groups(row):
 
     for age in range(start_age, end_age + 1):
         unpacked_rows.append({'Age': age, 'Gender': gender, 'Income': income, 'IncomeType': income_type})
-    
+
     return unpacked_rows
 
 # Unpack the age groups into specific ages
@@ -35,6 +35,9 @@ for _, row in income_by_gender_and_age_group.iterrows():
 
 # Convert the cleaned data into a DataFrame
 cleaned_income_by_gender_and_age_group = pd.DataFrame(cleaned_data).drop_duplicates()
+
+# Convert income from thousands of ISK to ISK
+cleaned_income_by_gender_and_age_group['Income'] = cleaned_income_by_gender_and_age_group['Income'] * 1000
 
 # Pivot the DataFrame to have a column for each income type
 cleaned_income_by_gender_and_age_group = cleaned_income_by_gender_and_age_group.pivot_table(
@@ -51,6 +54,10 @@ cleaned_income_by_gender_and_age_group = cleaned_income_by_gender_and_age_group.
     'Fjármagnstekjur': 'CapitalGains', 
     'Aðrar tekjur': 'OtherIncome'
 })
+
+# Display the cleaned data
+print("Cleaned Income by Gender and Age Group Data:")
+print(cleaned_income_by_gender_and_age_group.head())
 
 # Create SQLite database and table
 conn = sqlite3.connect('income_data.db')
