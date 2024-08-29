@@ -1,19 +1,55 @@
 import pandas as pd
 import sqlite3
+import requests
 
-# Load the CSV file
-population_distribution_file_path = 'data/population_distribution.csv'
-population_distribution = pd.read_csv(population_distribution_file_path, encoding='UTF-8', header=None, names=['Age', 'Population'])
+# Define the API endpoint and the query
+url = 'https://px.hagstofa.is:443/pxis/api/v1/is/Ibuar/mannfjoldi/1_yfirlit/Yfirlit_mannfjolda/MAN00101.px'
+query = {
+    "query": [
+        {
+            "code": "Kyn",
+            "selection": {
+                "filter": "item",
+                "values": [
+                    "Total"
+                ]
+            }
+        },
+        {
+            "code": "Aldur",
+            "selection": {
+                "filter": "item",
+                "values": [str(i) for i in range(110)]  # Ages from 0 to 109
+            }
+        },
+        {
+            "code": "Ár",
+            "selection": {
+                "filter": "item",
+                "values": [
+                    "2024"
+                ]
+            }
+        }
+    ],
+    "response": {
+        "format": "json"
+    }
+}
 
-# Convert byte-like objects to strings and then to integers for population_distribution
-def convert_to_int(value):
-    if isinstance(value, bytes):
-        return int(value.decode('utf-8').strip())
-    return int(value)
+# Make the POST request to the API
+response = requests.post(url, json=query)
+data = response.json()
 
-# Convert the Age and Population columns to integers
-population_distribution['Age'] = population_distribution['Age'].apply(convert_to_int)
-population_distribution['Population'] = population_distribution['Population'].apply(convert_to_int)
+# Extract and prepare the data
+records = []
+for record in data['data']:
+    age = int(record['key'][1])  # Extract and convert the age to an integer
+    population = int(record['values'][0])  # Extract and convert the population to an integer
+    records.append([age, population])
+
+# Convert to DataFrame
+population_distribution = pd.DataFrame(records, columns=['Age', 'Population'])
 
 # Create SQLite database and table
 conn = sqlite3.connect('income_data.db')
@@ -34,13 +70,14 @@ c.execute(create_population_table_query)
 
 # Insert the population distribution data into the table using parameterized queries
 for _, row in population_distribution.iterrows():
-    age = row['Age']
-    population = row['Population']
+    # Explicitly convert values to integers to avoid byte-like entries
+    age = int(row['Age'])
+    population = int(row['Population'])
     insert_population_query = '''
         INSERT INTO population_distribution (age, population)
         VALUES (?, ?)
     '''
-    c.execute(insert_population_query, (convert_to_int(age), convert_to_int(population)))
+    c.execute(insert_population_query, (age, population))
 
 # Commit and close connection
 conn.commit()

@@ -11,9 +11,10 @@ def run_script(script_name):
         print(e.stderr)
 
 scripts = [
-    "wage_distribution.py",
+    "occupation_income_distribution.py",
     "population_distribution.py",
-    "income_by_gender_and_age.py",
+    "employment_data.py",
+    "gender_and_age_income_distribution.py",
     "cost_of_living.py",
     "generate_population.py"
 ]
@@ -28,17 +29,22 @@ import pandas as pd
 conn = sqlite3.connect('income_data.db')
 
 # Query wage distribution
-wage_distribution_df = pd.read_sql_query("SELECT * FROM wage_distribution", conn)
-print("Wage Distribution:")
-print(wage_distribution_df.head())
+occupation_income_distribution_df = pd.read_sql_query("SELECT * FROM occupation_income_distribution", conn)
+print("Occupation Distribution:")
+print(occupation_income_distribution_df.head())
 
 # Query population distribution
 population_distribution_df = pd.read_sql_query("SELECT * FROM population_distribution", conn)
 print("Population Distribution:")
 print(population_distribution_df.head())
 
+# Query employment distribution
+employment_distribution_df = pd.read_sql_query("SELECT * FROM employment_data", conn)
+print("Employment Distribution:")
+print(employment_distribution_df.head())
+
 # Query income by gender and age
-income_by_gender_and_age_df = pd.read_sql_query("SELECT * FROM income_by_gender_and_age", conn)
+income_by_gender_and_age_df = pd.read_sql_query("SELECT * FROM gender_and_age_income_distribution", conn)
 print("Income by Gender and Age:")
 print(income_by_gender_and_age_df.head())
 
