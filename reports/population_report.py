@@ -20,8 +20,26 @@ MUNICIPAL_FILES = [
     Path("data/landing/arsreikningar_sveitarfelaga.xlsx"),
     Path("data/arsreikningar_sveitarfelaga.xlsx"),
 ]
+MUNICIPAL_TAX_FILE_CANDIDATES = [
+    Path("data/landing/utsvar_sveitarfelaga.xls"),
+    Path("data/utsvar_sveitarfelaga.xls"),
+]
 
 REPORT_PATH = Path("reports/population_report.html")
+
+# Tax constants (mirrors calculate_taxes.py)
+PERSONAL_TAX_CREDIT = 779112  # Annual personal tax credit in ISK
+TAX_BRACKETS = [
+    (446136 * 12, 0.3148),     # Up to 5,353,632 ISK at 31.48%
+    (1252501 * 12, 0.3798),    # 5,353,633 - 15,030,012 ISK at 37.98%
+    (float('inf'), 0.4628),    # Above 15,030,012 ISK at 46.28%
+]
+CHILD_TAX_RATE = 0.06  # Under 16
+CAPITAL_GAINS_TAX_RATE = 0.22
+FREE_CAPITAL_GAINS_LIMIT = 300000
+RADIO_FEE = 20900
+ELDERLY_FUND_FEE = 13749
+DEFAULT_MUNICIPAL_TAX_RATE = 0.1494
 
 
 def load_table(conn, name):
@@ -29,6 +47,51 @@ def load_table(conn, name):
         return pd.read_sql_query(f"SELECT * FROM {name}", conn)
     except Exception:
         return None
+
+
+def load_municipal_tax_rate():
+    for path in MUNICIPAL_TAX_FILE_CANDIDATES:
+        if path.exists():
+            try:
+                df = pd.read_excel(path, sheet_name="Öll", header=None)
+                row = df[df[0] == "Meðal útvarsprósenta"]
+                if row.empty:
+                    row = df[df[0].astype(str).str.contains("Meðal útvarsprósenta", na=False)]
+                if not row.empty:
+                    return float(row.iloc[0, 2])
+            except Exception:
+                continue
+    return DEFAULT_MUNICIPAL_TAX_RATE
+
+
+def calculate_income_tax(total_income, age, municipal_tax_rate):
+    if age < 16:
+        taxable_income = max(0, total_income - 180000)
+        return taxable_income * CHILD_TAX_RATE, 0.0
+
+    state_tax = 0.0
+    remaining = total_income
+    for limit, rate in TAX_BRACKETS:
+        portion = min(remaining, limit)
+        state_tax += portion * rate
+        remaining -= portion
+        if remaining <= 0:
+            break
+
+    municipal_tax = total_income * municipal_tax_rate
+    gross_tax = state_tax + municipal_tax
+    net_tax = max(0, gross_tax - PERSONAL_TAX_CREDIT)
+
+    net_muni = municipal_tax * (net_tax / gross_tax) if gross_tax > 0 and net_tax > 0 else 0.0
+    return net_tax, net_muni
+
+
+def calculate_capital_gains_tax(capital_gains):
+    return max(0, capital_gains - FREE_CAPITAL_GAINS_LIMIT) * CAPITAL_GAINS_TAX_RATE
+
+
+def calculate_fixed_fees(age):
+    return RADIO_FEE + ELDERLY_FUND_FEE if age >= 18 else 0
 
 
 def plot_to_base64(fig):
@@ -129,7 +192,30 @@ def occupation_distribution(population_df):
     return ("Occupation distribution", plot_to_base64(fig))
 
 
-def taxes_summary(original_df, tax_df):
+def compute_taxes_from_population(population_df):
+    if population_df is None or population_df.empty:
+        return {}
+    muni_rate = load_municipal_tax_rate()
+    income_tax_total = 0.0
+    muni_tax_total = 0.0
+    cg_tax_total = 0.0
+    fees_total = 0.0
+    for _, row in population_df.iterrows():
+        net_tax, net_muni = calculate_income_tax(row.get("total_income", 0), row.get("age", 0), muni_rate)
+        income_tax_total += net_tax
+        muni_tax_total += net_muni
+        cg_tax_total += calculate_capital_gains_tax(row.get("capital_gains", 0))
+        fees_total += calculate_fixed_fees(row.get("age", 0))
+    return {
+        "income_tax": income_tax_total,
+        "municipal_tax": muni_tax_total,
+        "capital_gains_tax": cg_tax_total,
+        "fixed_fees": fees_total,
+        "total_tax": income_tax_total + cg_tax_total + fees_total,
+    }
+
+
+def taxes_summary(original_df, tax_df, population_df):
     assumed_income_table = None
     if original_df is not None and "Skattar" in original_df.columns:
         # Note: This is per-capita table data, not a population-weighted total.
@@ -140,7 +226,12 @@ def taxes_summary(original_df, tax_df):
         for col in ["income_tax", "capital_gains_tax", "broadcasting_fee", "elderly_fund_fee", "total_tax", "municipal_tax"]:
             if col in tax_df.columns:
                 computed[col] = tax_df[col].sum()
-    return assumed_income_table, computed
+    if not computed:
+        computed = compute_taxes_from_population(population_df)
+    # Convert to m.kr for consistent display with budget targets
+    computed_mkr = {k: v / 1_000_000 for k, v in computed.items()}
+    assumed_income_table_mkr = assumed_income_table / 1_000_000 if assumed_income_table is not None else None
+    return assumed_income_table_mkr, computed_mkr
 
 
 def load_budget_targets():
@@ -191,11 +282,11 @@ def render_html(age_plots, gender_plots, occ_plot, assumed_tax, computed_taxes, 
     if combined is not None:
         tax_rows += f"<tr><td>Combined state + municipal target</td><td>{format_number(combined)} m.kr</td></tr>"
     if assumed_tax is not None:
-        tax_rows += f"<tr><td>Income table Skattar sum (not population-weighted)</td><td>{format_number(assumed_tax)}</td></tr>"
+        tax_rows += f"<tr><td>Income table Skattar sum (not population-weighted)</td><td>{format_number(assumed_tax)} m.kr</td></tr>"
     if computed_taxes:
         for k, v in computed_taxes.items():
             label = k.replace("_", " ").title()
-            tax_rows += f"<tr><td>{label}</td><td>{format_number(v)}</td></tr>"
+            tax_rows += f"<tr><td>{label}</td><td>{format_number(v)} m.kr</td></tr>"
 
     body = "<h1>Generated Population vs Official Income Distribution</h1>"
     body += "<h2>Income by age</h2>"
@@ -236,7 +327,7 @@ def main():
     age_plots = compare_income_by_age(original_df, population_df)
     gender_plots = compare_income_by_age_gender(original_df, population_df)
     occ_plot = occupation_distribution(population_df)
-    assumed_tax, computed_taxes = taxes_summary(original_df, tax_df)
+    assumed_tax, computed_taxes = taxes_summary(original_df, tax_df, population_df)
     budget_targets = load_budget_targets()
 
     html = render_html(age_plots, gender_plots, occ_plot, assumed_tax, computed_taxes, budget_targets)
