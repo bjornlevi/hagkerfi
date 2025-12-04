@@ -1,9 +1,12 @@
 import json
+import shutil
 from pathlib import Path
 import pandas as pd
 
 LANDING_DIR = Path("data/landing")
 BRONZE_DIR = Path("data/bronze")
+PROPERTY_VALUE_FILE = Path("data/property_value_estimates.csv")
+PROPERTY_TAX_FILE = Path("data/property_tax_amount.xlsx")
 
 
 def excel_to_csv(source: Path, dest: Path, sheet_name=0) -> None:
@@ -178,6 +181,25 @@ def main() -> None:
     excel_to_csv(LANDING_DIR / "arsreikningar_sveitarfelaga.xlsx", BRONZE_DIR / "arsreikningar_sveitarfelaga.csv")
     if (LANDING_DIR / "utsvar_sveitarfelaga.xls").exists():
         excel_to_csv(LANDING_DIR / "utsvar_sveitarfelaga.xls", BRONZE_DIR / "utsvar_sveitarfelaga.csv")
+    if PROPERTY_VALUE_FILE.exists():
+        dest = BRONZE_DIR / PROPERTY_VALUE_FILE.name
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        # Re-write to ensure consistent encoding/location
+        df = pd.read_csv(PROPERTY_VALUE_FILE)
+        df.to_csv(dest, index=False)
+        print(f"Bronze: property_value_estimates -> {dest}")
+    else:
+        print("Skip property value estimates (file missing).")
+    if PROPERTY_TAX_FILE.exists():
+        try:
+            excel_to_csv(PROPERTY_TAX_FILE, BRONZE_DIR / "property_tax_amount.csv")
+        except Exception as exc:  # fallback if openpyxl missing
+            dest_xlsx = BRONZE_DIR / PROPERTY_TAX_FILE.name
+            dest_xlsx.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy(PROPERTY_TAX_FILE, dest_xlsx)
+            print(f"Bronze: copied property_tax_amount.xlsx without conversion (openpyxl missing?): {exc}")
+    else:
+        print("Skip property tax amount (file missing).")
     population_json_to_csv()
     gender_age_income_json_to_csv()
     employment_json_to_csv()
