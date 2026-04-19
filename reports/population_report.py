@@ -6,7 +6,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import pandas as pd
-import sqlite3
+import duckdb
 
 # Allow running as a script without installing as a package
 sys.path.append(os.getcwd())
@@ -20,11 +20,6 @@ MUNICIPAL_FILES = [
     Path("data/landing/arsreikningar_sveitarfelaga.xlsx"),
     Path("data/arsreikningar_sveitarfelaga.xlsx"),
 ]
-PROPERTY_VALUE_FILE = Path("data/bronze/property_value_estimates.csv")
-PROPERTY_VALUE_FALLBACK = Path("data/property_value_estimates.csv")
-PROPERTY_TAX_TABLE = Path("data/bronze/property_tax_amount.csv")
-PROPERTY_TAX_TABLE_FALLBACK = Path("data/bronze/property_tax_amount.xlsx")
-PROPERTY_TAX_TABLE_FALLBACK_ROOT = Path("data/property_tax_amount.xlsx")
 MUNICIPAL_TAX_FILE_CANDIDATES = [
     Path("data/landing/utsvar_sveitarfelaga.xls"),
     Path("data/utsvar_sveitarfelaga.xls"),
@@ -85,116 +80,38 @@ def load_property_tax_from_pivot(paths) -> dict | None:
     return None
 
 
-def load_property_tax_table(path: Path) -> dict | None:
-    """Parse property tax amount table (bronze CSV or xlsx) and return totals in thousand ISK."""
-    import zipfile
-    import xml.etree.ElementTree as ET
-    import pandas as pd
-
-    if not path.exists():
-        return None
-
-    if path.suffix.lower() == ".csv":
-        try:
-            df = pd.read_csv(path)
-            if {"tax_total", "base_a", "base_b", "base_c"}.issubset(df.columns):
-                tax_total = pd.to_numeric(df["tax_total"], errors="coerce").sum(skipna=True)
-                base_total = (
-                    pd.to_numeric(df["base_a"], errors="coerce").sum(skipna=True)
-                    + pd.to_numeric(df["base_b"], errors="coerce").sum(skipna=True)
-                    + pd.to_numeric(df["base_c"], errors="coerce").sum(skipna=True)
-                )
-                effective_rate = tax_total / base_total if base_total else None
-                return {
-                    "tax_total_thousand": tax_total,
-                    "base_total_thousand": base_total,
-                    "effective_rate": effective_rate,
-                }
-        except Exception:
-            return None
-
-    ns = {"s": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
+def load_property_tax_table(conn: duckdb.DuckDBPyConnection) -> dict | None:
+    """Read property tax totals from silver.duckdb (table property_tax_amount, thousand ISK)."""
     try:
-        with zipfile.ZipFile(path) as z:
-            shared = ET.fromstring(z.read("xl/sharedStrings.xml"))
-            strings = ["".join(t.itertext()) for t in shared.findall(".//s:si", ns)]
-
-            def lookup(idx: str) -> str:
-                return strings[int(idx)]
-
-            sheet = ET.fromstring(z.read("xl/worksheets/sheet1.xml"))
-            rows = []
-            for r in sheet.findall(".//s:row", ns):
-                row = []
-                for c in r.findall("s:c", ns):
-                    t = c.get("t")
-                    v = c.find("s:v", ns)
-                    if v is None:
-                        row.append("")
-                        continue
-                    if t == "s":
-                        row.append(lookup(v.text))
-                    else:
-                        row.append(v.text)
-                rows.append(row)
-
-            data = []
-            for row in rows:
-                if not row or not row[0] or not row[0][0].isdigit():
-                    continue
-                if len(row) < 2 or (row[1] and row[1][0].isdigit()):
-                    continue
-                while len(row) < 14:
-                    row.append("")
-                data.append(row[:14])
-
-            if not data:
-                return None
-
-            cols = [
-                "svnr",
-                "municipality",
-                "population",
-                "rate_a",
-                "rate_b",
-                "rate_c",
-                "tax_a",
-                "tax_b",
-                "tax_c",
-                "tax_total",
-                "tax_per_capita",
-                "base_a",
-                "base_b",
-                "base_c",
-            ]
-            df = pd.DataFrame(data, columns=cols)
-            numeric_cols = ["rate_a", "rate_b", "rate_c", "tax_a", "tax_b", "tax_c", "tax_total", "tax_per_capita", "base_a", "base_b", "base_c"]
-            df[numeric_cols] = df[numeric_cols].apply(pd.to_numeric, errors="coerce")
-
-            tax_total = df["tax_total"].sum(skipna=True)
-            base_total = (df["base_a"] + df["base_b"] + df["base_c"]).sum(skipna=True)
-            effective_rate = tax_total / base_total if base_total else None
-            return {
-                "tax_total_thousand": tax_total,
-                "base_total_thousand": base_total,
-                "effective_rate": effective_rate,
-            }
+        df = conn.execute("SELECT * FROM property_tax_amount").df()
+        if not {"tax_total", "base_a", "base_b", "base_c"}.issubset(df.columns):
+            return None
+        tax_total = pd.to_numeric(df["tax_total"], errors="coerce").sum(skipna=True)
+        base_total = (
+            pd.to_numeric(df["base_a"], errors="coerce").sum(skipna=True)
+            + pd.to_numeric(df["base_b"], errors="coerce").sum(skipna=True)
+            + pd.to_numeric(df["base_c"], errors="coerce").sum(skipna=True)
+        )
+        effective_rate = tax_total / base_total if base_total else None
+        return {
+            "tax_total_thousand": tax_total,
+            "base_total_thousand": base_total,
+            "effective_rate": effective_rate,
+        }
     except Exception:
         return None
 
 
-def load_property_value_estimate(path: Path) -> dict | None:
-    """Load latest property value estimate (Fasteignamat) from CSV (m.kr)."""
-    if not path.exists():
-        return None
+def load_property_value_estimate(conn: duckdb.DuckDBPyConnection) -> dict | None:
+    """Read latest property value estimate from silver.duckdb (table property_value_estimates, m.kr)."""
     try:
-        df = pd.read_csv(path)
+        df = conn.execute("SELECT * FROM property_value_estimates").df()
         df = df.dropna(subset=["Ár", "Fasteignamat"])
         latest = df.sort_values("Ár").iloc[-1]
         return {
             "year": int(latest["Ár"]),
             "fasteignamat_mkr": float(latest["Fasteignamat"]),
-            "brunabotamat_mkr": float(latest["Brunabótamat"]) if "Brunabótamat" in latest else None,
+            "brunabotamat_mkr": float(latest["Brunabótamat"]) if "Brunabótamat" in latest.index else None,
         }
     except Exception:
         return None
@@ -217,7 +134,7 @@ DEFAULT_MUNICIPAL_TAX_RATE = 0.1494
 
 def load_table(conn, name):
     try:
-        return pd.read_sql_query(f"SELECT * FROM {name}", conn)
+        return conn.execute(f"SELECT * FROM {name}").df()
     except Exception:
         return None
 
@@ -398,7 +315,7 @@ def taxes_summary(original_df, tax_df, population_df):
 
     computed = {}
     if tax_df is not None:
-        for col in ["income_tax", "capital_gains_tax", "broadcasting_fee", "elderly_fund_fee", "total_tax", "municipal_tax"]:
+        for col in ["income_tax", "capital_gains_tax", "fixed_fees", "total_tax", "municipal_tax"]:
             if col in tax_df.columns:
                 computed[col] = tax_df[col].sum()
     if not computed:
@@ -456,14 +373,10 @@ def load_budget_targets():
     return state_target, muni_target, combined, property_tax_a, property_tax_ab
 
 
-def load_property_tax_analysis():
-    """Combine property tax table and property value estimate into a simple snapshot."""
-    table = (
-        load_property_tax_table(PROPERTY_TAX_TABLE)
-        or load_property_tax_table(PROPERTY_TAX_TABLE_FALLBACK)
-        or load_property_tax_table(PROPERTY_TAX_TABLE_FALLBACK_ROOT)
-    )
-    values = load_property_value_estimate(PROPERTY_VALUE_FILE) or load_property_value_estimate(PROPERTY_VALUE_FALLBACK)
+def load_property_tax_analysis(conn: duckdb.DuckDBPyConnection):
+    """Combine property tax table and property value estimate from silver.db."""
+    table = load_property_tax_table(conn)
+    values = load_property_value_estimate(conn)
 
     if not table and not values:
         return None
@@ -571,18 +484,18 @@ def render_html(age_plots, gender_plots, occ_plot, assumed_tax, computed_taxes, 
 
 def main():
     db_path = get_db_path()
-    conn = sqlite3.connect(db_path)
+    conn = duckdb.connect(db_path)
     original_df = load_table(conn, "gender_and_age_income_distribution")
     population_df = load_table(conn, "population")
     tax_df = load_table(conn, "population_with_taxes")
-    conn.close()
 
     age_plots = compare_income_by_age(original_df, population_df)
     gender_plots = compare_income_by_age_gender(original_df, population_df)
     occ_plot = occupation_distribution(population_df)
     assumed_tax, computed_taxes = taxes_summary(original_df, tax_df, population_df)
     budget_targets = load_budget_targets()
-    property_tax_analysis = load_property_tax_analysis()
+    property_tax_analysis = load_property_tax_analysis(conn)
+    conn.close()
 
     html = render_html(
         age_plots,

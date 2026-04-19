@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hagkerfi — Economic Simulation</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #0f1117; --surface: #1a1d27; --border: #2a2d3a;
+    --accent: #4f8ef7; --accent2: #e05c8a;
+    --text: #e2e4ec; --muted: #7a7f9a;
+    --green: #3ecf8e; --orange: #f5a623; --red: #e05c5c;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: system-ui, sans-serif; font-size: 14px; }
+
+  /* ── Header ── */
+  header {
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    padding: 10px 20px; display: flex; align-items: center; gap: 12px;
+  }
+  header h1 { font-size: 17px; font-weight: 700; letter-spacing: .05em; white-space: nowrap; }
+  .btn {
+    border: none; border-radius: 6px; padding: 6px 14px; cursor: pointer;
+    font-size: 13px; font-weight: 600;
+  }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover { opacity: .85; }
+  .btn-ghost { background: var(--border); color: var(--text); }
+  .btn-ghost:hover { background: #3a3d50; }
+  .btn-danger { background: #3b1a1a; color: var(--red); }
+  .btn-danger:hover { background: #4d2222; }
+  .btn:disabled { opacity: .35; cursor: not-allowed; }
+
+  /* ── Tabs ── */
+  #tabs { display: flex; background: var(--surface); border-bottom: 1px solid var(--border); padding: 0 20px; }
+  .tab { padding: 10px 18px; cursor: pointer; font-size: 13px; font-weight: 600; color: var(--muted); border-bottom: 2px solid transparent; }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  /* ── Save/load bar ── */
+  #save-bar {
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    padding: 8px 20px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  }
+  #save-bar label { color: var(--muted); font-size: 12px; }
+  #sim-name { background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 5px 10px; font-size: 13px; width: 180px; }
+  #sim-name:focus { outline: none; border-color: var(--accent); }
+
+  /* ── KPIs ── */
+  #kpis { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; padding: 14px 20px; }
+  .kpi { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; }
+  .kpi-label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+  .kpi-value { font-size: 20px; font-weight: 700; margin-top: 4px; }
+  .kpi-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .kpi-delta { font-size: 11px; font-weight: 600; margin-top: 3px; }
+  .kpi-delta.up { color: var(--green); }
+  .kpi-delta.down { color: var(--red); }
+  .kpi-delta.flat { color: var(--muted); }
+
+  /* ── Controls ── */
+  #controls {
+    background: var(--surface); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
+    padding: 8px 20px; display: flex; align-items: center; gap: 10px;
+  }
+  .ctrl-btn { background: var(--border); border: none; color: var(--text); border-radius: 6px; padding: 5px 12px; cursor: pointer; font-size: 15px; }
+  .ctrl-btn:hover { background: #3a3d50; }
+  .ctrl-btn:disabled { opacity: .3; cursor: not-allowed; }
+  #play-btn { background: var(--accent); color: #fff; font-size: 17px; padding: 5px 16px; }
+  #play-btn:hover { opacity: .85; }
+  #month-label { font-weight: 700; min-width: 80px; text-align: center; font-size: 13px; }
+  #speed-select { background: var(--border); color: var(--text); border: none; border-radius: 6px; padding: 4px 8px; font-size: 12px; }
+  #scrubber-wrap { flex: 1; }
+  #scrubber { width: 100%; accent-color: var(--accent); }
+
+  /* ── Charts (simulate tab) ── */
+  #charts {
+    display: grid; grid-template-columns: repeat(3, 1fr);
+    gap: 10px; padding: 10px 20px 20px;
+  }
+  .chart-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px; }
+  .chart-card.wide { grid-column: span 2; }
+  .chart-card h3 { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 8px; }
+
+  /* ── Saved simulations list ── */
+  #sims-panel { padding: 16px 20px; }
+  #sims-panel h2 { font-size: 14px; font-weight: 700; margin-bottom: 12px; }
+  #sims-list { display: grid; gap: 8px; }
+  .sim-row {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    padding: 12px 16px; display: flex; align-items: center; gap: 12px;
+  }
+  .sim-row input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; }
+  .sim-info { flex: 1; }
+  .sim-name { font-weight: 700; }
+  .sim-meta { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .sim-kpis { display: flex; gap: 16px; font-size: 12px; color: var(--muted); }
+  .sim-kpis span { white-space: nowrap; }
+  .sim-actions { display: flex; gap: 6px; }
+
+  /* ── Compare panel ── */
+  #compare-panel { padding: 16px 20px; }
+  #compare-panel h2 { font-size: 14px; font-weight: 700; margin-bottom: 4px; }
+  #compare-hint { font-size: 12px; color: var(--muted); margin-bottom: 14px; }
+  #compare-charts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .cmp-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px; }
+  .cmp-card h3 { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 8px; }
+  #compare-legend { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 12px; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+  .legend-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  #no-sims-msg { color: var(--muted); font-size: 13px; padding: 20px 0; }
+
+  /* ── Status bar ── */
+  #status-bar { position: fixed; bottom: 0; left: 0; right: 0; background: #111827; color: var(--muted); font-size: 11px; padding: 4px 16px; border-top: 1px solid var(--border); z-index: 10; }
+  #status-bar.err { color: var(--red); }
+
+  .spinner { display: inline-block; width: 11px; height: 11px; border: 2px solid var(--muted); border-top-color: var(--accent); border-radius: 50%; animation: spin .6s linear infinite; margin-right: 5px; vertical-align: middle; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>HAGKERFI</h1>
+  <button class="btn btn-primary" id="init-btn">Initialize Population</button>
+  <div style="flex:1"></div>
+  <label style="color:var(--muted);font-size:12px">Save as</label>
+  <input id="sim-name" type="text" placeholder="simulation name…">
+  <button class="btn btn-ghost" id="save-btn" disabled>Save</button>
+</header>
+
+<div id="tabs">
+  <div class="tab active" data-tab="simulate">Simulate</div>
+  <div class="tab" data-tab="library">Library</div>
+  <div class="tab" data-tab="compare">Compare</div>
+</div>
+
+<!-- ══════════════════════ SIMULATE TAB ══════════════════════ -->
+<div id="tab-simulate" class="tab-panel active">
+
+  <div id="kpis">
+    <div class="kpi"><div class="kpi-label">Population</div><div class="kpi-value" id="kpi-pop">—</div><div class="kpi-delta flat" id="kpi-pop-d"></div></div>
+    <div class="kpi"><div class="kpi-label">Employment Rate (16–74)</div><div class="kpi-value" id="kpi-emp">—</div><div class="kpi-sub" id="kpi-emp-total"></div><div class="kpi-delta flat" id="kpi-emp-d"></div></div>
+    <div class="kpi"><div class="kpi-label">Mean Income</div><div class="kpi-value" id="kpi-inc">—</div><div class="kpi-delta flat" id="kpi-inc-d"></div></div>
+    <div class="kpi"><div class="kpi-label">Mean Wages (employed)</div><div class="kpi-value" id="kpi-wag">—</div><div class="kpi-delta flat" id="kpi-wag-d"></div></div>
+    <div class="kpi"><div class="kpi-label">Total Tax Revenue</div><div class="kpi-value" id="kpi-tax">—</div><div class="kpi-delta flat" id="kpi-tax-d"></div></div>
+  </div>
+
+  <div id="controls">
+    <button class="ctrl-btn" id="prev-btn" disabled>◀</button>
+    <button class="ctrl-btn" id="play-btn" disabled>▶</button>
+    <button class="ctrl-btn" id="next-btn" disabled>▶|</button>
+    <div id="month-label">Month 0</div>
+    <div id="scrubber-wrap">
+      <input type="range" id="scrubber" min="0" max="0" value="0" disabled>
+    </div>
+    <label style="color:var(--muted);font-size:12px">Speed</label>
+    <select id="speed-select">
+      <option value="1000">1×</option>
+      <option value="500">2×</option>
+      <option value="200">5×</option>
+      <option value="80">10×</option>
+    </select>
+  </div>
+
+  <div id="charts">
+    <div class="chart-card"><h3>Employment Status</h3><canvas id="chart-status" height="200"></canvas></div>
+    <div class="chart-card"><h3>Sector Employment</h3><canvas id="chart-sector" height="200"></canvas></div>
+    <div class="chart-card"><h3>Tax Breakdown (bn ISK)</h3><canvas id="chart-tax" height="200"></canvas></div>
+    <div class="chart-card wide"><h3>Mean Income by Age Group (ISK)</h3><canvas id="chart-income" height="160"></canvas></div>
+    <div class="chart-card"><h3>Population Pyramid</h3><canvas id="chart-pyramid" height="220"></canvas></div>
+    <div class="chart-card wide"><h3>Trends over Time</h3><canvas id="chart-trends" height="140"></canvas></div>
+    <div class="chart-card"><h3>Income Deciles (ISK)</h3><canvas id="chart-deciles" height="160"></canvas></div>
+  </div>
+</div>
+
+<!-- ══════════════════════ LIBRARY TAB ══════════════════════ -->
+<div id="tab-library" class="tab-panel">
+  <div id="sims-panel">
+    <h2>Saved Simulations</h2>
+    <div id="sims-list"><p id="no-sims-msg">No saved simulations yet. Run a simulation and press Save.</p></div>
+  </div>
+</div>
+
+<!-- ══════════════════════ COMPARE TAB ══════════════════════ -->
+<div id="tab-compare" class="tab-panel">
+  <div id="compare-panel">
+    <h2>Compare Simulations</h2>
+    <p id="compare-hint">Select 2 or more simulations in the Library tab, then click Compare Selected.</p>
+    <div id="compare-legend"></div>
+    <div id="compare-charts">
+      <div class="cmp-card"><h3>Employment Rate (16–74)</h3><canvas id="cmp-emp" height="200"></canvas></div>
+      <div class="cmp-card"><h3>Mean Income (ISK)</h3><canvas id="cmp-inc" height="200"></canvas></div>
+      <div class="cmp-card"><h3>Total Tax Revenue (bn ISK)</h3><canvas id="cmp-tax" height="200"></canvas></div>
+      <div class="cmp-card"><h3>Population</h3><canvas id="cmp-pop" height="200"></canvas></div>
+    </div>
+  </div>
+</div>
+
+<div id="status-bar">Ready. Click "Initialize Population" to begin.</div>
+
+<script>
+// ── Palette ───────────────────────────────────────────────────────────────────
+const PALETTE = ['#4f8ef7','#3ecf8e','#f5a623','#e05c8a','#a78bfa','#38bdf8','#fb923c','#34d399'];
+Chart.defaults.color = '#7a7f9a';
+Chart.defaults.borderColor = '#2a2d3a';
+Chart.defaults.font.family = 'system-ui, sans-serif';
+Chart.defaults.font.size = 11;
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+const fmt    = n => n == null ? '—' : Math.round(n).toLocaleString('is-IS');
+const fmtPct = n => n == null ? '—' : (n * 100).toFixed(1) + '%';
+const fmtBn  = n => n == null ? '—' : n.toFixed(1) + ' bn';
+
+function setStatus(msg, isErr = false) {
+  const el = document.getElementById('status-bar');
+  el.innerHTML = msg;
+  el.className = isErr ? 'err' : '';
+}
+
+// ── Simulate tab charts ───────────────────────────────────────────────────────
+function mc(id, config) { return new Chart(document.getElementById(id).getContext('2d'), config); }
+
+const statusChart = mc('chart-status', {
+  type: 'doughnut',
+  data: { labels: [], datasets: [{ data: [], backgroundColor: PALETTE, borderWidth: 0 }] },
+  options: { plugins: { legend: { position: 'right', labels: { boxWidth: 10 } } }, cutout: '55%' }
+});
+const sectorChart = mc('chart-sector', {
+  type: 'doughnut',
+  data: { labels: [], datasets: [{ data: [], backgroundColor: PALETTE.concat(PALETTE), borderWidth: 0 }] },
+  options: { plugins: { legend: { position: 'right', labels: { boxWidth: 9, font: { size: 10 } } } }, cutout: '50%' }
+});
+const taxChart = mc('chart-tax', {
+  type: 'bar',
+  data: { labels: ['State Income','Municipal','Capital Gains','Fees'], datasets: [{ data: [], backgroundColor: PALETTE, borderRadius: 4 }] },
+  options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+});
+const incomeChart = mc('chart-income', {
+  type: 'bar',
+  data: { labels: [], datasets: [
+    { label: 'Total income', data: [], backgroundColor: '#4f8ef7aa', borderRadius: 3 },
+    { label: 'Wages', data: [], backgroundColor: '#3ecf8eaa', borderRadius: 3 },
+  ]},
+  options: { plugins: { legend: { position: 'top' } }, scales: { y: { beginAtZero: true } } }
+});
+const pyramidChart = mc('chart-pyramid', {
+  type: 'bar',
+  data: { labels: [], datasets: [
+    { label: 'Male', data: [], backgroundColor: '#4f8ef7aa', borderRadius: 2 },
+    { label: 'Female', data: [], backgroundColor: '#e05c8aaa', borderRadius: 2 },
+  ]},
+  options: { indexAxis: 'y', plugins: { legend: { position: 'top' } }, scales: { x: { beginAtZero: true } } }
+});
+const trendsChart = mc('chart-trends', {
+  type: 'line',
+  data: { labels: [], datasets: [
+    { label: 'Employment rate (16–74)', data: [], borderColor: '#4f8ef7', backgroundColor: 'transparent', yAxisID: 'y1', tension: .3, pointRadius: 0 },
+    { label: 'Mean income (M ISK)', data: [], borderColor: '#3ecf8e', backgroundColor: 'transparent', yAxisID: 'y2', tension: .3, pointRadius: 0 },
+    { label: 'Tax revenue (bn)', data: [], borderColor: '#f5a623', backgroundColor: 'transparent', yAxisID: 'y2', tension: .3, pointRadius: 0 },
+  ]},
+  options: {
+    plugins: { legend: { position: 'top' } },
+    scales: {
+      y1: { type: 'linear', position: 'left', min: 0, max: 1, ticks: { callback: v => (v*100).toFixed(0)+'%' } },
+      y2: { type: 'linear', position: 'right', beginAtZero: true, grid: { drawOnChartArea: false } },
+    }
+  }
+});
+const decileChart = mc('chart-deciles', {
+  type: 'bar',
+  data: { labels: ['P10','P20','P30','P40','P50','P60','P70','P80','P90'], datasets: [{ label: 'ISK', data: [], backgroundColor: '#a78bfaaa', borderRadius: 3 }] },
+  options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+});
+
+// ── Compare charts ────────────────────────────────────────────────────────────
+function makeCmpChart(id, label) {
+  return mc(id, {
+    type: 'line',
+    data: { labels: [], datasets: [] },
+    options: {
+      plugins: { legend: { display: false } },
+      scales: { y: { beginAtZero: false } },
+      elements: { point: { radius: 0 } },
+      interaction: { mode: 'index', intersect: false },
+    }
+  });
+}
+const cmpEmp = makeCmpChart('cmp-emp');
+const cmpInc = makeCmpChart('cmp-inc');
+const cmpTax = makeCmpChart('cmp-tax');
+const cmpPop = makeCmpChart('cmp-pop');
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let currentMonth = 0, totalMonths = 0;
+let playing = false, playTimer = null;
+let prevKpis = null;
+
+function setDelta(id, curr, prev, fmtFn, higherIsBetter = true) {
+  const el = document.getElementById(id);
+  if (!el || prev == null || curr == null) { if (el) el.textContent = ''; return; }
+  const diff = curr - prev;
+  if (Math.abs(diff) < 1e-9) { el.textContent = ''; el.className = 'kpi-delta flat'; return; }
+  const sign = diff > 0 ? '+' : '';
+  el.textContent = sign + fmtFn(diff);
+  const positive = higherIsBetter ? diff > 0 : diff < 0;
+  el.className = 'kpi-delta ' + (positive ? 'up' : 'down');
+}
+
+function applySnapshot(snap) {
+  const k = snap.kpis;
+  document.getElementById('kpi-pop').textContent = fmt(k.population);
+  document.getElementById('kpi-emp').textContent = fmtPct(k.employment_rate);
+  document.getElementById('kpi-emp-total').textContent = fmtPct(k.employment_rate_total) + ' of total pop';
+  document.getElementById('kpi-inc').textContent = fmt(k.mean_income);
+  document.getElementById('kpi-wag').textContent = fmt(k.mean_wages);
+  document.getElementById('kpi-tax').textContent = fmtBn(k.total_tax_bn);
+
+  if (prevKpis && snap.month > 0) {
+    setDelta('kpi-pop-d',  k.population,        prevKpis.population,        d => fmt(Math.abs(d)));
+    setDelta('kpi-emp-d',  k.employment_rate,    prevKpis.employment_rate,   d => (Math.abs(d)*100).toFixed(2)+'pp');
+    setDelta('kpi-inc-d',  k.mean_income,        prevKpis.mean_income,       d => fmt(Math.abs(d))+' ISK');
+    setDelta('kpi-wag-d',  k.mean_wages,         prevKpis.mean_wages,        d => fmt(Math.abs(d))+' ISK');
+    setDelta('kpi-tax-d',  k.total_tax_bn,       prevKpis.total_tax_bn,      d => Math.abs(d).toFixed(2)+' bn');
+  } else {
+    ['kpi-pop-d','kpi-emp-d','kpi-inc-d','kpi-wag-d','kpi-tax-d'].forEach(id => {
+      const el = document.getElementById(id); if (el) el.textContent = '';
+    });
+  }
+  prevKpis = k;
+
+  const sd = snap.status_distribution;
+  statusChart.data.labels = Object.keys(sd);
+  statusChart.data.datasets[0].data = Object.values(sd);
+  statusChart.update('none');
+
+  const ss = snap.sector_shares;
+  sectorChart.data.labels = Object.keys(ss);
+  sectorChart.data.datasets[0].data = Object.values(ss).map(v => +(v*100).toFixed(2));
+  sectorChart.update('none');
+
+  const tb = snap.tax_breakdown;
+  taxChart.data.datasets[0].data = [tb.state_income, tb.municipal, tb.capital_gains, tb.fees];
+  taxChart.update('none');
+
+  const ia = snap.income_by_age;
+  incomeChart.data.labels = ia.labels;
+  incomeChart.data.datasets[0].data = ia.mean_total;
+  incomeChart.data.datasets[1].data = ia.mean_wages;
+  incomeChart.update('none');
+
+  const py = snap.pyramid;
+  pyramidChart.data.labels = py.labels;
+  pyramidChart.data.datasets[0].data = py.male;
+  pyramidChart.data.datasets[1].data = py.female;
+  pyramidChart.update('none');
+
+  decileChart.data.datasets[0].data = snap.income_deciles;
+  decileChart.update('none');
+
+  const ts = snap.timeseries;
+  const labels = ts.employment_rate.map((_, i) => `M${i}`);
+  trendsChart.data.labels = labels;
+  trendsChart.data.datasets[0].data = ts.employment_rate;
+  trendsChart.data.datasets[1].data = ts.mean_income.map(v => +(v/1e6).toFixed(2));
+  trendsChart.data.datasets[2].data = ts.total_tax_bn;
+  trendsChart.update('none');
+
+  currentMonth = snap.month;
+  totalMonths = snap.total_months;
+  const sc = document.getElementById('scrubber');
+  sc.max = totalMonths - 1;
+  sc.value = currentMonth;
+  sc.disabled = totalMonths < 2;
+  document.getElementById('month-label').textContent = `Month ${currentMonth}`;
+  document.getElementById('prev-btn').disabled = currentMonth <= 0;
+  document.getElementById('next-btn').disabled = false;
+  document.getElementById('save-btn').disabled = false;
+}
+
+// ── Playback ──────────────────────────────────────────────────────────────────
+function setPlaying(val) {
+  playing = val;
+  document.getElementById('play-btn').textContent = playing ? '⏸' : '▶';
+}
+function playStep() {
+  if (!playing) return;
+  const speed = parseInt(document.getElementById('speed-select').value);
+  advanceMonth().then(() => { if (playing) playTimer = setTimeout(playStep, speed); });
+}
+
+// ── API ───────────────────────────────────────────────────────────────────────
+async function initPopulation() {
+  const btn = document.getElementById('init-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>Loading…';
+  setStatus('<span class="spinner"></span>Loading population from database…');
+  setPlaying(false); clearTimeout(playTimer);
+  prevKpis = null;
+  try {
+    const res = await fetch('/api/init', { method: 'POST' });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    applySnapshot(data);
+    document.getElementById('play-btn').disabled = false;
+    setStatus(`Initialized: ${fmt(data.kpis.population)} individuals. Press ▶ to advance.`);
+  } catch(e) { setStatus('Error: ' + e.message, true); }
+  finally { btn.disabled = false; btn.textContent = 'Re-initialize'; }
+}
+
+async function advanceMonth() {
+  setStatus('<span class="spinner"></span>Simulating month…');
+  try {
+    const res = await fetch('/api/advance', { method: 'POST' });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    applySnapshot(data);
+    const ch = data.changes || {};
+    const netSign = ch.net_jobs >= 0 ? '+' : '';
+    const annualNote = ch.annual_tick ? ' · Annual: aging applied' : '';
+    setStatus(`Month ${data.month} — Jobs: ${netSign}${ch.net_jobs} (gained ${ch.jobs_gained}, lost ${ch.jobs_lost}) · Births: ${ch.births} · Deaths: ${ch.deaths} · Wages +${ch.wage_growth_pct}%${annualNote}`);
+  } catch(e) { setStatus('Error: ' + e.message, true); setPlaying(false); }
+}
+
+async function goToMonth(month) {
+  setStatus(`<span class="spinner"></span>Loading month ${month}…`);
+  try {
+    // Load previous snapshot first so deltas are correct
+    if (month > 0) {
+      const prev = await fetch(`/api/snapshot/${month - 1}`);
+      const prevData = await prev.json();
+      if (!prevData.error) prevKpis = prevData.kpis;
+    } else {
+      prevKpis = null;
+    }
+    const res = await fetch(`/api/snapshot/${month}`);
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    applySnapshot(data);
+    setStatus(`Viewing month ${month}.`);
+  } catch(e) { setStatus('Error: ' + e.message, true); }
+}
+
+async function saveSimulation() {
+  const name = document.getElementById('sim-name').value.trim();
+  if (!name) { setStatus('Enter a simulation name before saving.', true); return; }
+  setStatus(`<span class="spinner"></span>Saving "${name}"…`);
+  try {
+    const res = await fetch(`/api/simulations/${encodeURIComponent(name)}`, { method: 'POST' });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    setStatus(`Saved "${name}" (${data.months} months).`);
+    await refreshLibrary();
+  } catch(e) { setStatus('Error: ' + e.message, true); }
+}
+
+async function loadSimulation(name) {
+  setStatus(`<span class="spinner"></span>Loading "${name}"…`);
+  setPlaying(false); clearTimeout(playTimer);
+  prevKpis = null;
+  try {
+    const res = await fetch(`/api/simulations/${encodeURIComponent(name)}/load`, { method: 'POST' });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    applySnapshot(data);
+    document.getElementById('play-btn').disabled = false;
+    document.getElementById('sim-name').value = name;
+    switchTab('simulate');
+    setStatus(`Loaded "${name}" — ${data.total_months} months. Press ▶ to continue.`);
+  } catch(e) { setStatus('Error: ' + e.message, true); }
+}
+
+async function deleteSimulation(name) {
+  if (!confirm(`Delete simulation "${name}"?`)) return;
+  try {
+    const res = await fetch(`/api/simulations/${encodeURIComponent(name)}`, { method: 'DELETE' });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    await refreshLibrary();
+    setStatus(`Deleted "${name}".`);
+  } catch(e) { setStatus('Error: ' + e.message, true); }
+}
+
+// ── Library ───────────────────────────────────────────────────────────────────
+async function refreshLibrary() {
+  try {
+    const res = await fetch('/api/simulations');
+    const sims = await res.json();
+    renderLibrary(sims);
+  } catch(e) { console.error(e); }
+}
+
+function renderLibrary(sims) {
+  const list = document.getElementById('sims-list');
+  if (!sims.length) {
+    list.innerHTML = '<p id="no-sims-msg">No saved simulations yet. Run a simulation and press Save.</p>';
+    return;
+  }
+  list.innerHTML = sims.map(s => {
+    const k = s.final_kpis || {};
+    return `<div class="sim-row" data-name="${s.name}">
+      <input type="checkbox" class="sim-check" value="${s.name}">
+      <div class="sim-info">
+        <div class="sim-name">${s.name}</div>
+        <div class="sim-meta">${s.created_at || ''} · ${s.months} months</div>
+        <div class="sim-kpis">
+          <span>Employment ${k.employment_rate != null ? fmtPct(k.employment_rate) : '—'}</span>
+          <span>Mean income ${k.mean_income != null ? fmt(k.mean_income) : '—'} ISK</span>
+          <span>Tax ${k.total_tax_bn != null ? fmtBn(k.total_tax_bn) : '—'}</span>
+        </div>
+      </div>
+      <div class="sim-actions">
+        <button class="btn btn-ghost" onclick="loadSimulation('${s.name}')">Load</button>
+        <button class="btn btn-ghost" onclick="compareSelected(['${s.name}'])">Compare</button>
+        <button class="btn btn-danger" onclick="deleteSimulation('${s.name}')">Delete</button>
+      </div>
+    </div>`;
+  }).join('');
+
+  // "Compare selected" button
+  const btnRow = document.createElement('div');
+  btnRow.style.cssText = 'display:flex;gap:10px;margin-top:10px;';
+  btnRow.innerHTML = `<button class="btn btn-primary" id="cmp-selected-btn">Compare Selected</button>
+    <span style="color:var(--muted);font-size:12px;align-self:center">Check 2+ simulations then click Compare Selected</span>`;
+  list.appendChild(btnRow);
+  document.getElementById('cmp-selected-btn').addEventListener('click', () => {
+    const checked = [...document.querySelectorAll('.sim-check:checked')].map(el => el.value);
+    if (checked.length < 2) { setStatus('Select at least 2 simulations to compare.', true); return; }
+    compareSelected(checked);
+  });
+}
+
+// ── Compare ───────────────────────────────────────────────────────────────────
+async function compareSelected(names) {
+  setStatus(`<span class="spinner"></span>Loading comparison for: ${names.join(', ')}…`);
+  try {
+    const url = `/api/compare?names=${names.map(encodeURIComponent).join(',')}`;
+    const res = await fetch(url);
+    const data = await res.json();
+    renderCompare(data);
+    switchTab('compare');
+    setStatus(`Comparing: ${names.join(', ')}`);
+  } catch(e) { setStatus('Error: ' + e.message, true); }
+}
+
+function renderCompare(sims) {
+  const maxMonths = Math.max(...sims.map(s => s.months || 0));
+  const labels = Array.from({ length: maxMonths }, (_, i) => `M${i}`);
+
+  // Legend
+  const legend = document.getElementById('compare-legend');
+  legend.innerHTML = sims.map((s, i) =>
+    `<div class="legend-item"><div class="legend-dot" style="background:${PALETTE[i % PALETTE.length]}"></div>${s.name} (${s.months} months)</div>`
+  ).join('');
+
+  function updateCmpChart(chart, key, transformFn) {
+    chart.data.labels = labels;
+    chart.data.datasets = sims.map((s, i) => ({
+      label: s.name,
+      data: (s.timeseries?.[key] || []).map(transformFn || (v => v)),
+      borderColor: PALETTE[i % PALETTE.length],
+      backgroundColor: 'transparent',
+      tension: .3,
+      pointRadius: 0,
+      borderWidth: 2,
+    }));
+    chart.update();
+  }
+
+  updateCmpChart(cmpEmp, 'employment_rate', v => +(v * 100).toFixed(2));
+  updateCmpChart(cmpInc, 'mean_income');
+  updateCmpChart(cmpTax, 'total_tax_bn');
+  updateCmpChart(cmpPop, 'population');
+
+  // Adjust y-axes labels
+  cmpEmp.options.scales.y.ticks = { callback: v => v.toFixed(1) + '%' };
+  cmpEmp.update('none');
+}
+
+// ── Tabs ──────────────────────────────────────────────────────────────────────
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === `tab-${name}`));
+  if (name === 'library') refreshLibrary();
+}
+document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => switchTab(t.dataset.tab)));
+
+// ── Wiring ────────────────────────────────────────────────────────────────────
+document.getElementById('init-btn').addEventListener('click', initPopulation);
+document.getElementById('save-btn').addEventListener('click', saveSimulation);
+
+document.getElementById('play-btn').addEventListener('click', () => {
+  if (!playing) { setPlaying(true); playStep(); }
+  else { setPlaying(false); clearTimeout(playTimer); }
+});
+document.getElementById('prev-btn').addEventListener('click', () => {
+  if (currentMonth > 0) goToMonth(currentMonth - 1);
+});
+document.getElementById('next-btn').addEventListener('click', () => {
+  if (currentMonth < totalMonths - 1) goToMonth(currentMonth + 1);
+  else advanceMonth();
+});
+document.getElementById('scrubber').addEventListener('input', e => {
+  const m = parseInt(e.target.value);
+  if (m !== currentMonth) { setPlaying(false); clearTimeout(playTimer); goToMonth(m); }
+});
+</script>
+</body>
+</html>

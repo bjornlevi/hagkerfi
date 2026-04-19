@@ -1,16 +1,17 @@
 import os
-import sqlite3
 from pathlib import Path
 
+import duckdb
 
-def get_db_path(default: str = "income_data.db") -> str:
+
+def get_db_path(default: str = "data/silver.duckdb") -> str:
     """Return the database path, honoring DB_PATH env if set."""
     return os.getenv("DB_PATH", default)
 
 
-def connect_db(default: str = "income_data.db") -> sqlite3.Connection:
-    """Open a SQLite connection using DB_PATH env override."""
-    return sqlite3.connect(get_db_path(default))
+def connect_db(default: str = "data/silver.duckdb") -> duckdb.DuckDBPyConnection:
+    """Open a DuckDB connection using DB_PATH env override."""
+    return duckdb.connect(get_db_path(default))
 
 
 def format_number(number) -> str:

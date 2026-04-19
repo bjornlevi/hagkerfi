@@ -6,7 +6,7 @@ Outputs:
 - reports/population_diagnostics.csv with per-age/gender differences.
 """
 import os
-import sqlite3
+import duckdb
 import sys
 from pathlib import Path
 
@@ -22,17 +22,15 @@ OUT_CSV = Path("reports/population_diagnostics.csv")
 
 def main():
     db_path = get_db_path()
-    conn = sqlite3.connect(db_path)
-    pop = pd.read_sql_query(
-        "select age, gender, total_income, wages, capital_gains, other_income from population",
-        conn,
-    )
-    ref = pd.read_sql_query(
-        "select Aldur as age, Kyn as gender, Heildartekjur as ref_total, "
-        "Atvinnutekjur as ref_wages, Fjármagnstekjur as ref_cg, Aðrar_tekjur as ref_other "
-        "from gender_and_age_income_distribution",
-        conn,
-    )
+    conn = duckdb.connect(db_path)
+    pop = conn.execute(
+        "SELECT age, gender, total_income, wages, capital_gains, other_income FROM population"
+    ).df()
+    ref = conn.execute(
+        "SELECT Aldur AS age, Kyn AS gender, Heildartekjur AS ref_total, "
+        "Atvinnutekjur AS ref_wages, Fjármagnstekjur AS ref_cg, Aðrar_tekjur AS ref_other "
+        "FROM gender_and_age_income_distribution"
+    ).df()
     conn.close()
 
     ref["gender"] = ref["gender"].replace({"Karlar": "Male", "Konur": "Female"})

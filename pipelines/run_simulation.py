@@ -3,7 +3,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-SILVER_DB = Path("data/silver.db")
+SILVER_DB = Path("data/silver.duckdb")
 
 
 def run_calculate_taxes(db_path: Path = SILVER_DB) -> None:

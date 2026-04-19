@@ -1,0 +1,49 @@
+========================================================================
+  HAGKERFI — Population QA Validation Report
+  2026-04-19 11:20
+========================================================================
+
+  ── Age distribution
+     ✅ PASS  Total population count  [0.00% vs tol 0.50%]
+            generated=383726  official=383726
+     ✅ PASS  Per-age share (mean absolute deviation)  [0.00% vs tol 5.00%]
+            Worst ages: [0, 1, 2, 3, 4] (deviations: [np.float64(0.0),
+            np.float64(0.0), np.float64(0.0), np.float64(0.0),
+            np.float64(0.0)]%)
+
+  ── Gender distribution
+     ✅ PASS  Male population share  [0.01% vs tol 2.00%]
+            generated=49.99%  official=50.00%
+
+  ── Occupation / sector distribution
+     ✅ PASS  Sector share (Male) — mean absolute deviation  [0.03% vs tol 8.00%]
+            Worst sectors: ['B-C - Framleiðsla og námugröftur', 'C -
+            Framleiðsla', 'A - Landbúnaður, skógrækt og fiskveiðar']
+            (deviations: [np.float64(0.11), np.float64(0.07),
+            np.float64(0.07)]%)
+     ✅ PASS  Sector share (Female) — mean absolute deviation  [0.03% vs tol 8.00%]
+            Worst sectors: ['Einkennandi greinar ferðaþjónustu', 'J -
+            Upplýsingar og fjarskipti', 'S-X - Félagasamtök og önnur
+            þjónustustarfsemi (Annað)'] (deviations: [np.float64(0.12),
+            np.float64(0.07), np.float64(0.05)]%)
+
+  ── Occupation class distribution
+     ✅ PASS  Max occupation class share ≤ 40%  [0.00% vs tol 0.00%]
+            generated=30.09%  official=< 40%
+     ✅ PASS  Min occupation class share ≥ 0.5%  [0.00% vs tol 0.00%]
+            generated=9.92%  official=> 0.5%
+
+  ── Income distribution
+     ✅ PASS  Total income — mean absolute % deviation across age groups  [0.89% vs tol 10.00%]
+            Worst (age, gender, %dev): [(16, 'Male', 4.8), (16, 'Female',
+            2.4), (20, 'Female', 1.6)]
+     ✅ PASS  Wages — mean absolute % deviation across age groups  [4.51% vs tol 18.00%]
+            Worst (age, gender, %dev): [(85, 'Male', 41.2), (85, 'Female',
+            18.4), (80, 'Female', 14.3)]
+     ✅ PASS  Capital gains — mean absolute % deviation across age groups  [0.18% vs tol 15.00%]
+            Worst (age, gender, %dev): [(75, 'Male', 2.1), (85, 'Male', 0.8),
+            (80, 'Male', 0.7)]
+
+========================================================================
+  Results:  10 passed  0 failed  0 skipped
+========================================================================

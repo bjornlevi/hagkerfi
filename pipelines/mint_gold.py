@@ -1,11 +1,11 @@
 import os
-import sqlite3
+import duckdb
 import subprocess
 import sys
 from pathlib import Path
 import pandas as pd
 
-SILVER_DB = Path("data/silver.db")
+SILVER_DB = Path("data/silver.duckdb")
 GOLD_DIR = Path("data/gold")
 
 
@@ -14,19 +14,19 @@ def run_generate_population(db_path: Path = SILVER_DB) -> None:
     subprocess.run([sys.executable, "generate_population.py"], check=True, env=env)
 
 
-def export_population(db_path: Path = SILVER_DB, dest: Path = GOLD_DIR / "population.csv") -> None:
+def export_population(db_path: Path = SILVER_DB, dest: Path = GOLD_DIR / "population.parquet") -> None:
     dest.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(db_path)
-    df = pd.read_sql_query("SELECT * FROM population", conn)
-    df.to_csv(dest, index=False)
+    conn = duckdb.connect(str(db_path))
+    df = conn.execute("SELECT * FROM population").df()
     conn.close()
-    print(f"Gold: exported population -> {dest}")
+    df.to_parquet(dest, index=False)
+    print(f"Gold: exported population -> {dest} ({len(df):,} rows)")
 
 
 def build_occupation_income_stats(db_path: Path = SILVER_DB) -> None:
     """Create a gold table with occupation probabilities and income ranges by age/gender."""
-    conn = sqlite3.connect(db_path)
-    pop = pd.read_sql_query("SELECT age, gender, occupation, total_income FROM population", conn)
+    conn = duckdb.connect(str(db_path))
+    pop = conn.execute("SELECT age, gender, occupation, total_income FROM population").df()
     if pop.empty:
         print("Gold: population is empty; skipping occupation income stats.")
         conn.close()
@@ -56,7 +56,7 @@ def build_occupation_income_stats(db_path: Path = SILVER_DB) -> None:
             )
 
     stats_df = pd.DataFrame(stats_rows)
-    stats_df.to_sql("gold_occupation_income_stats", conn, if_exists="replace", index=False)
+    conn.execute("CREATE OR REPLACE TABLE gold_occupation_income_stats AS SELECT * FROM stats_df")
     conn.close()
     print("Gold: wrote gold_occupation_income_stats (age/gender -> occupation probability and income range)")
 
